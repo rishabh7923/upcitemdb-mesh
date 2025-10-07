@@ -6,7 +6,7 @@ import { lookup } from './core/upcitemdb';
 config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = parseInt(process.env.PORT || '3000', 10);
 
 // Middleware
 app.use(express.json());
@@ -46,9 +46,10 @@ app.get('/lookup', async (req: Request, res: Response) => {
 });
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server is running on port ${PORT}`);
     console.log(`📍 Health check: http://localhost:${PORT}/health`);
+    console.log(`🌐 Server accessible from anywhere on port ${PORT}`);
 });
 
 export default app;
