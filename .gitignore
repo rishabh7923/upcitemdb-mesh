@@ -42,3 +42,4 @@ pids
 *.pid.lock
 
 proxies.txt
+upc_data.db

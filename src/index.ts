@@ -1,6 +1,9 @@
 import { config } from 'dotenv';
-import express, { Request, Response } from 'express';
 import { lookup } from './core/upcitemdb';
+import express, { Request, Response } from 'express';
+import { AppDataSource } from './database/source';
+import { UpcItem } from './database/entity/UPCItem';
+
 
 // Load environment variables
 config();
@@ -38,11 +41,54 @@ app.get('/lookup', async (req: Request, res: Response) => {
     }
 
     try {
-        const response = await lookup(upc);
-        res.status(200).json(response);
+        // Check cache first
+        const cachedItem = await UpcItem.findOne({ where: { upc } });
+
+        if (cachedItem) return res.status(200).json({
+            ...cachedItem,
+            source: 'cache'
+        });
+
+
+        const apiResponse = await lookup(upc);
+
+        if (!apiResponse || !apiResponse.items?.length) return res.status(404).json({
+            error: `Item not found: No item with UPC ${upc} found in our database or external sources`
+        });
+
+
+        const itemData = apiResponse.items[0];
+
+        try {
+            await UpcItem.insert({ ...itemData, upc });
+        } catch (insertError) {
+            console.warn(`⚠️ Failed to cache item for UPC ${upc}:`, (insertError as Error).message);
+        }
+
+        return res.status(200).json({
+            ...itemData,
+            source: 'external'
+        });
+
     } catch (error) {
-        res.status(500).json({ error: (error as Error).message });
+        console.error(`💥 Error looking up UPC ${upc}:`, error);
+
+        // Handle specific error types
+        if (error instanceof TypeError && error.message.includes('fetch')) {
+            return res.status(503).json({
+                error: 'External service unavailable: Unable to connect to UPC lookup service. Please try again later.'
+            });
+        }
+
+        return res.status(500).json({
+            error: 'Internal server error: An unexpected error occurred while processing your request'
+        });
     }
+});
+
+
+AppDataSource.initialize().then(() => {
+    console.log(`💻 Connected to the Cache Database`);
 });
 
 // Start server
@@ -51,5 +97,6 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`📍 Health check: http://localhost:${PORT}/health`);
     console.log(`🌐 Server accessible from anywhere on port ${PORT}`);
 });
+
 
 export default app;
